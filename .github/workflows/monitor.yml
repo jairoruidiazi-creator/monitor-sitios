@@ -1,0 +1,93 @@
+name: Monitor de los sitios
+
+# Cada 10 minutos revisa que devolta.com.co y contrataylicita.co respondan, que los certificados no estén por
+# vencer y que la descarga diaria de SECOP II siga llegando. Si algo falla dos veces seguidas abre un issue en este
+# repositorio (GitHub avisa por correo al dueño); cuando se recupera, lo comenta y lo cierra.
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  actions: write
+
+concurrency:
+  group: monitor
+  cancel-in-progress: false
+
+jobs:
+  revisar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Revisar
+        id: revisar
+        env:
+          ANON_CYL: ${{ secrets.ANON_CYL }}
+        run: |
+          revisar() {
+            fallas=""
+            # url | código esperado | texto que debe aparecer (vacío = no revisar)
+            while IFS='|' read -r url codigo texto; do
+              [ -z "$url" ] && continue
+              cuerpo=$(mktemp)
+              real=$(curl -s -o "$cuerpo" -w '%{http_code}' --max-time 30 -A "monitor-sitios" "$url" || echo 000)
+              if [ "$real" != "$codigo" ]; then fallas="$fallas\n- $url respondió $real (se esperaba $codigo)";
+              elif [ -n "$texto" ] && ! grep -q "$texto" "$cuerpo"; then fallas="$fallas\n- $url respondió $real pero sin el texto «$texto»"; fi
+              rm -f "$cuerpo"
+            done <<'LISTA'
+          https://devolta.com.co/|200|Devolta
+          https://devolta.com.co/ingresar|200|
+          https://www.devolta.com.co/|308|
+          https://contrataylicita.co/|200|Contrata y Licita
+          https://contrataylicita.co/login|200|
+          https://contrataylicita.com.co/|301|
+          LISTA
+            # Certificados: avisar si vencen en menos de 14 días
+            for host in devolta.com.co contrataylicita.co contrataylicita.com.co; do
+              fin=$(echo | timeout 20 openssl s_client -servername $host -connect $host:443 2>/dev/null | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2)
+              if [ -z "$fin" ]; then fallas="$fallas\n- No se pudo leer el certificado de $host";
+              else dias=$(( ( $(date -d "$fin" +%s) - $(date +%s) ) / 86400 )); [ $dias -lt 14 ] && fallas="$fallas\n- El certificado de $host vence en $dias días"; fi
+            done
+            # Contrata y Licita: la descarga diaria de SECOP II (corre hacia las 5 a. m.) no debe tener más de 30 horas
+            if [ -n "$ANON_CYL" ]; then
+              ultima=$(curl -s --max-time 30 -X POST https://wjkobxowsckejcwyvmzs.supabase.co/rest/v1/rpc/ultima_actualizacion \
+                -H "apikey: $ANON_CYL" -H "Content-Type: application/json" -d '{}' | tr -d '"')
+              if ! fecha=$(date -d "$ultima" +%s 2>/dev/null); then fallas="$fallas\n- No se pudo consultar la última descarga de SECOP II ($ultima)";
+              else horas=$(( ( $(date +%s) - fecha ) / 3600 )); [ $horas -gt 30 ] && fallas="$fallas\n- La última descarga de SECOP II fue hace $horas horas ($ultima)"; fi
+            fi
+          }
+          revisar
+          if [ -n "$fallas" ]; then echo "Primera revisión con fallas; se repite en 60 s"; sleep 60; revisar; fi
+          printf "%b\n" "${fallas:-Todo bien}"
+          { echo "fallas<<FIN"; printf "%b\n" "$fallas"; echo "FIN"; } >> "$GITHUB_OUTPUT"
+
+      - name: Avisar o cerrar el aviso
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FALLAS: ${{ steps.revisar.outputs.fallas }}
+        run: |
+          titulo="Falla en los sitios"
+          abierto=$(gh issue list -R "$GITHUB_REPOSITORY" --state open --search "\"$titulo\" in:title" --json number -q '.[0].number')
+          ahora=$(TZ=America/Bogota date '+%Y-%m-%d %H:%M')
+          if [ -n "$(echo "$FALLAS" | tr -d '[:space:]')" ]; then
+            cuerpo=$(printf "Revisión del %s (hora de Colombia):\n%s\n\n[Ver la ejecución](%s/%s/actions/runs/%s)" "$ahora" "$FALLAS" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")
+            if [ -z "$abierto" ]; then gh issue create -R "$GITHUB_REPOSITORY" --title "$titulo" --body "$cuerpo";
+            else
+              # Un comentario por hora como máximo mientras siga caído, para no llenar el correo
+              ultimo=$(gh api "repos/$GITHUB_REPOSITORY/issues/$abierto/comments" -q '.[-1].created_at // empty')
+              if [ -z "$ultimo" ] || [ $(( $(date +%s) - $(date -d "$ultimo" +%s) )) -gt 3600 ]; then gh issue comment "$abierto" -R "$GITHUB_REPOSITORY" --body "$cuerpo"; fi
+            fi
+            exit 1
+          elif [ -n "$abierto" ]; then
+            gh issue close "$abierto" -R "$GITHUB_REPOSITORY" --comment "Recuperado: todo responde bien desde el $ahora (hora de Colombia)."
+          fi
+
+      - name: Mantener activo el monitor
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # GitHub apaga las tareas programadas de repos sin actividad en 60 días; esto lo evita una vez al día
+        run: |
+          [ "$(date -u +%H%M)" \< "0010" ] && gh api -X PUT "repos/$GITHUB_REPOSITORY/actions/workflows/monitor.yml/enable" || true
