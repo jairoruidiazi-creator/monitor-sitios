@@ -80,13 +80,17 @@ jobs:
           abierto=$(gh issue list -R "$GITHUB_REPOSITORY" --state open --search "\"$titulo\" in:title" --json number -q '.[0].number')
           ahora=$(TZ=America/Bogota date '+%Y-%m-%d %H:%M')
           if [ -n "$(echo "$FALLAS" | tr -d '[:space:]')" ]; then
-            cuerpo=$(printf "Revisión del %s (hora de Colombia):\n%s\n\n[Ver la ejecución](%s/%s/actions/runs/%s)" "$ahora" "$FALLAS" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")
-            if [ -z "$abierto" ]; then gh issue create -R "$GITHUB_REPOSITORY" --title "$titulo" --body "$cuerpo";
+            cuerpo=$(printf "@jairoruidiazi-creator Revisión del %s (hora de Colombia):\n%s\n\n[Ver la ejecución](%s/%s/actions/runs/%s)" "$ahora" "$FALLAS" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")
+            avisar=0
+            if [ -z "$abierto" ]; then gh issue create -R "$GITHUB_REPOSITORY" --title "$titulo" --body "$cuerpo"; avisar=1;
             else
               # Un comentario por hora como máximo mientras siga caído, para no llenar el correo
               ultimo=$(gh api "repos/$GITHUB_REPOSITORY/issues/$abierto/comments" -q '.[-1].created_at // empty')
-              if [ -z "$ultimo" ] || [ $(( $(date +%s) - $(date -d "$ultimo" +%s) )) -gt 3600 ]; then gh issue comment "$abierto" -R "$GITHUB_REPOSITORY" --body "$cuerpo"; fi
+              if [ -z "$ultimo" ] || [ $(( $(date +%s) - $(date -d "$ultimo" +%s) )) -gt 3600 ]; then gh issue comment "$abierto" -R "$GITHUB_REPOSITORY" --body "$cuerpo"; avisar=1; fi
             fi
+            # La ejecución en rojo hace que GitHub envíe el correo «Run failed» (llega siempre; el del issue no siempre).
+            # Solo al abrir el aviso o al comentarlo (máximo una vez por hora), para no llenar el correo.
+            [ "$avisar" = "1" ] && exit 1
           elif [ -n "$abierto" ]; then
             gh issue close "$abierto" -R "$GITHUB_REPOSITORY" --comment "Recuperado: todo responde bien desde el $ahora (hora de Colombia)."
           fi

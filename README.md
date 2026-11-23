@@ -3,7 +3,7 @@
 Revisa cada 10 minutos, desde GitHub Actions, que **devolta.com.co** y **contrataylicita.co** respondan, que sus
 certificados no estén por vencer y que la descarga diaria de SECOP II de Contrata y Licita siga llegando.
 
-Si algo falla dos veces seguidas, abre un issue **«Falla en los sitios»** en este repositorio (GitHub avisa por
+Si algo falla dos veces seguidas, abre un issue **«Falla en los sitios»** y marca la ejecución en rojo (GitHub envía el correo «Run failed»; como
 correo). Mientras siga la falla agrega un comentario por hora como máximo; cuando todo vuelve a responder, lo cierra.
 
 - Qué se revisa: la lista y los umbrales están en `.github/workflows/monitor.yml`.
