@@ -65,8 +65,7 @@ jobs:
             fi
           }
           revisar
-          [ "${{ inputs.simular_falla }}" = "true" ] && fallas="$fallas
-- PRUEBA: falla simulada a mano para probar el aviso (no hay ninguna caída real)"
+          [ "${{ inputs.simular_falla }}" = "true" ] && fallas="$fallas\n- PRUEBA: falla simulada a mano para probar el aviso (no hay ninguna caída real)"
           if [ -n "$fallas" ] && [ "${{ inputs.simular_falla }}" != "true" ]; then echo "Primera revisión con fallas; se repite en 60 s"; sleep 60; revisar; fi
           printf "%b\n" "${fallas:-Todo bien}"
           { echo "fallas<<FIN"; printf "%b\n" "$fallas"; echo "FIN"; } >> "$GITHUB_OUTPUT"
