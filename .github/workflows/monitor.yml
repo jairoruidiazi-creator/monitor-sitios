@@ -5,7 +5,7 @@ name: Monitor de los sitios
 # repositorio (GitHub avisa por correo al dueño); cuando se recupera, lo comenta y lo cierra.
 on:
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: "3-59/10 * * * *"   # minutos 3, 13, 23…: los redondos son los más congestionados en GitHub
   workflow_dispatch:
     inputs:
       simular_falla:
