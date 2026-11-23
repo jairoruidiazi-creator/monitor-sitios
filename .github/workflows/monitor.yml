@@ -26,6 +26,7 @@ jobs:
         env:
           ANON_CYL: ${{ secrets.ANON_CYL }}
         run: |
+          set +e   # las comparaciones «[ … ] && …» devuelven 1 cuando todo está bien; no deben cortar el script
           revisar() {
             fallas=""
             # url | código esperado | texto que debe aparecer (vacío = no revisar)
@@ -68,6 +69,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           FALLAS: ${{ steps.revisar.outputs.fallas }}
         run: |
+          set +e
           titulo="Falla en los sitios"
           abierto=$(gh issue list -R "$GITHUB_REPOSITORY" --state open --search "\"$titulo\" in:title" --json number -q '.[0].number')
           ahora=$(TZ=America/Bogota date '+%Y-%m-%d %H:%M')
