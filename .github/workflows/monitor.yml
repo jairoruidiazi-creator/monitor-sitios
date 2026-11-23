@@ -79,7 +79,6 @@ jobs:
               ultimo=$(gh api "repos/$GITHUB_REPOSITORY/issues/$abierto/comments" -q '.[-1].created_at // empty')
               if [ -z "$ultimo" ] || [ $(( $(date +%s) - $(date -d "$ultimo" +%s) )) -gt 3600 ]; then gh issue comment "$abierto" -R "$GITHUB_REPOSITORY" --body "$cuerpo"; fi
             fi
-            exit 1
           elif [ -n "$abierto" ]; then
             gh issue close "$abierto" -R "$GITHUB_REPOSITORY" --comment "Recuperado: todo responde bien desde el $ahora (hora de Colombia)."
           fi
